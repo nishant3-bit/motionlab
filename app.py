@@ -1,582 +1,553 @@
-import io, math, tempfile, os
+import io, os, math, tempfile, subprocess, json
 from datetime import datetime, timezone
-import streamlit as st
-import pandas as pd
 import numpy as np
+import pandas as pd
+import streamlit as st
 import plotly.express as px
+import plotly.graph_objects as go
 
-st.set_page_config(page_title="MotionLab | Movement, understood.", page_icon="◒", layout="wide")
+st.set_page_config(page_title="MotionLab | Sports Biomechanics", page_icon="◒", layout="wide")
 
-# ---------- Visual system ----------
+# -------------------- Visual system --------------------
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
-:root { --ink:#202923; --muted:#748078; --paper:#ffffff; --line:#e4e8df; --green:#315b46; --pale:#e8eee7; }
-html, body, [class*="css"] { font-family:'DM Sans',sans-serif; color:var(--ink); }
-.stApp { background:var(--paper); }
-.block-container { max-width:1400px; padding-top:2rem; padding-bottom:3rem; }
-h1,h2,h3 { font-family:'Manrope',sans-serif; letter-spacing:-.045em; color:var(--ink); }
-h1 { font-size:2.45rem !important; font-weight:800 !important; }
-h2 { font-size:1.55rem !important; font-weight:750 !important; }
-h3 { font-size:1.08rem !important; font-weight:700 !important; }
-p, label { color:var(--ink); }
-[data-testid="stSidebar"] { background:#202923; }
-[data-testid="stSidebar"] * { color:#f4f5ef !important; }
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:#c5d0c7 !important; }
-[data-testid="stMetric"] { background:#fff; border:1px solid var(--line); padding:17px 18px; border-radius:14px; box-shadow:0 2px 8px rgba(30,45,35,.025); }
-[data-testid="stMetricLabel"] { color:#748078 !important; font-size:.82rem; }
-[data-testid="stMetricValue"] { color:#202923 !important; font-family:'Manrope',sans-serif; }
-.stButton > button, .stDownloadButton > button { border-radius:9px; border:1px solid #315b46; background:#315b46; color:white; font-weight:600; min-height:2.65rem; }
-.stButton > button:hover, .stDownloadButton > button:hover { background:#254735; border-color:#254735; color:white; }
-.stTextInput input, .stSelectbox div[data-baseweb="select"], .stNumberInput input, .stTextArea textarea { border-radius:9px; }
-[data-testid="stTabs"] button { font-weight:600; }
-.ml-card { background:white; border:1px solid var(--line); border-radius:16px; padding:20px 22px; }
-.ml-eyebrow { text-transform:uppercase; letter-spacing:.12em; font-size:.68rem; font-weight:700; color:#748078; }
-.ml-muted { color:#748078; font-size:.9rem; }
-.ml-pill { display:inline-block; background:#e8eee7; color:#315b46; border-radius:99px; padding:5px 10px; font-size:.75rem; font-weight:700; }
-.ml-rule { border-top:1px solid var(--line); margin:18px 0; }
-footer {visibility:hidden;}
-
-/* MotionLab public-facing landing page */
-.ml-site {background:#fff;color:#17231c}
-.ml-nav {display:flex;align-items:center;justify-content:space-between;padding:10px 0 24px;border-bottom:1px solid #e9eee9;margin-bottom:46px}
-.ml-brand {font-family:'Manrope',sans-serif;font-size:1.25rem;font-weight:800;letter-spacing:-.06em;color:#17231c}
-.ml-brand span {color:#52765e}
-.ml-navlinks {font-size:.86rem;color:#536258;letter-spacing:.01em}
-.ml-kicker {font-size:.68rem;letter-spacing:.17em;text-transform:uppercase;font-weight:800;color:#52765e}
-.ml-hero-title {font-family:'Manrope',sans-serif;font-size:clamp(2.8rem,6vw,5.7rem);line-height:.99;letter-spacing:-.075em;font-weight:800;color:#15221a;margin:18px 0 20px}
-.ml-hero-copy {font-size:1.08rem;line-height:1.75;color:#66736a;max-width:560px}
-.ml-hero-panel {background:#f2f5f0;border:1px solid #e4eae3;padding:14px;border-radius:4px}
-.ml-photo-caption {font-size:.72rem;color:#68756c;letter-spacing:.04em;text-transform:uppercase;margin-top:9px}
-.ml-section-title {font-family:'Manrope',sans-serif;font-size:2.1rem;letter-spacing:-.06em;font-weight:750;color:#17231c}
-.ml-feature {border-top:1px solid #e5ebe5;padding:22px 0 18px}
-.ml-feature-no {font-size:.72rem;color:#6b8a70;letter-spacing:.12em;font-weight:800}
-.ml-feature-title {font-size:1.06rem;font-weight:750;color:#17231c;margin:7px 0}
-.ml-feature-copy {font-size:.88rem;line-height:1.65;color:#718077}
-.ml-cta {background:#193d2b;color:white;padding:32px 34px;border-radius:3px}
-.ml-cta h2 {color:white!important}
-.ml-small {font-size:.78rem;color:#748078}
-
-
-/* MotionLab full product design system */
-:root { --ml-forest:#244b36; --ml-leaf:#6f8d72; --ml-cream:#f7f8f5; --ml-ink:#17231c; }
-[data-testid="stAppViewContainer"] { background:#fff; }
-[data-testid="stSidebar"] { background:#17251d; border-right:1px solid #26392d; }
-[data-testid="stSidebar"] > div:first-child { padding-top:1.5rem; }
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h1 {font-size:1.55rem!important;letter-spacing:-.06em;color:#fff}
-[data-testid="stSidebar"] [data-testid="stRadio"] label {padding:9px 12px;border-radius:7px;margin:2px 0;font-size:.9rem}
-[data-testid="stSidebar"] [data-testid="stRadio"] label:hover {background:#26392d}
-.block-container {max-width:1440px;padding-top:2.4rem;padding-bottom:4rem}
-h1 {font-size:2.65rem!important;line-height:1.08!important;letter-spacing:-.065em!important}
-h2 {font-size:1.55rem!important;letter-spacing:-.05em!important}
-h3 {font-size:1.05rem!important;letter-spacing:-.025em!important}
-.ml-page-intro {padding:4px 0 22px;border-bottom:1px solid #e8ece7;margin-bottom:26px}
-.ml-page-intro .ml-eyebrow {color:#64816a}
-.ml-panel {background:#fff;border:1px solid #e6ebe5;border-radius:12px;padding:22px;box-shadow:0 5px 20px rgba(20,40,25,.035)}
-.ml-panel-soft {background:#f6f8f5;border:1px solid #e9eee8;border-radius:12px;padding:22px}
-.ml-section-kicker {font-size:.68rem;text-transform:uppercase;letter-spacing:.14em;color:#6d8871;font-weight:800}
-[data-testid="stMetric"] {border-radius:10px!important;border:1px solid #e6ebe5!important;box-shadow:0 3px 12px rgba(20,40,25,.025)!important}
-[data-testid="stDataFrame"] {border:1px solid #e6ebe5;border-radius:10px;overflow:hidden}
-.stForm {border:1px solid #e7ece6;border-radius:12px;padding:20px;background:#fbfcfa}
-.stButton>button,.stDownloadButton>button {border-radius:7px;min-height:2.8rem;letter-spacing:.005em}
-hr {border-color:#e8ece7!important}
-
+:root{--ink:#17231c;--muted:#69766d;--line:#e4eae3;--green:#28583e;--sage:#dce9dc;--paper:#fff;--soft:#f5f7f3}
+html,body,[class*="css"]{font-family:'DM Sans',sans-serif;color:var(--ink)}
+.stApp{background:var(--paper)}
+.block-container{max-width:1460px;padding-top:1.3rem;padding-bottom:3rem}
+h1,h2,h3{font-family:'Manrope',sans-serif;letter-spacing:-.045em;color:var(--ink)}
+h1{font-size:2.35rem!important;font-weight:800!important}
+h2{font-size:1.55rem!important;font-weight:800!important}
+p,label{color:var(--ink)}
+[data-testid="stSidebar"]{background:#17231c}
+[data-testid="stSidebar"] *{color:#f7faf6!important}
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p{color:#cbd7cd!important}
+[data-testid="stMetric"]{background:#fff;border:1px solid var(--line);padding:15px 17px;border-radius:13px}
+[data-testid="stMetricLabel"]{color:#68766c!important;font-size:.8rem}
+[data-testid="stMetricValue"]{color:#17231c!important;font-family:'Manrope',sans-serif;font-weight:800}
+.stButton>button,.stDownloadButton>button{border-radius:9px;border:1px solid var(--green);background:var(--green);color:#fff!important;font-weight:700;min-height:2.7rem}
+.stButton>button:hover,.stDownloadButton>button:hover{background:#1d452f;border-color:#1d452f;color:#fff!important}
+.stTextInput input,.stSelectbox div[data-baseweb="select"],.stNumberInput input,.stTextArea textarea{border-radius:9px}
+[data-testid="stTabs"] button{font-weight:700}
+.ml-card{background:#fff;border:1px solid var(--line);border-radius:15px;padding:20px 22px}
+.ml-kicker{font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;font-weight:800;color:#426c50}
+.ml-muted{color:#6e7b71;font-size:.92rem;line-height:1.65}
+.ml-brand{font-family:'Manrope',sans-serif;font-size:1.25rem;font-weight:800;letter-spacing:-.06em;color:#17231c}
+.ml-brand span{color:#527b5c}
+.ml-hero{font-family:'Manrope',sans-serif;font-size:clamp(3rem,6vw,5.6rem);line-height:.96;letter-spacing:-.075em;font-weight:800;color:#15221a;margin:.8rem 0 1.1rem}
+.ml-section{font-family:'Manrope',sans-serif;font-size:2rem;letter-spacing:-.06em;font-weight:800;color:#17231c}
+.ml-pill{display:inline-block;background:#e7efe6;color:#28583e;border-radius:99px;padding:5px 10px;font-size:.73rem;font-weight:800}
+div[data-testid="stAlert"]{border-radius:12px}
+footer{visibility:hidden}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- Optional Supabase ----------
+SPORTS = ["Cricket / Fast bowling","Baseball / Pitching","Football / Soccer","Basketball","Tennis","Sprint / Running","General movement"]
+MOVEMENTS = {
+"Cricket / Fast bowling":["Full bowling action","Run-up","Gather / bound","Back-foot contact (BFC)","Delivery stride / front-foot contact (FFC)","Ball release","Follow-through"],
+"Baseball / Pitching":["Full pitching action","Wind-up","Stride / lead-foot contact","Arm-cocking","Ball release","Follow-through"],
+"Football / Soccer":["Sprint","Acceleration","Deceleration","Change of direction","Kicking","Jump / landing"],
+"Basketball":["Jump","Landing","Sprint","Change of direction","Shooting"],
+"Tennis":["Serve","Forehand","Backhand","Split-step / movement","Sprint"],
+"Sprint / Running":["Acceleration","Maximum velocity","Running gait","Start","Finish"],
+"General movement":["Whole movement","Squat","Lunge","Jump / landing","Overhead movement"]
+}
+PHASE_GUIDES = {
+"Cricket / Fast bowling":"Run-up → gather/bound → back-foot contact → delivery stride → front-foot contact → release → follow-through",
+"Baseball / Pitching":"Wind-up → stride → lead-foot contact → arm-cocking → release → follow-through",
+"Football / Soccer":"Approach → plant / contact → execution → recovery",
+"Basketball":"Preparation → take-off → flight → landing / deceleration",
+"Tennis":"Preparation → loading → acceleration → contact → recovery",
+"Sprint / Running":"Start → acceleration → transition → maximum velocity → deceleration",
+"General movement":"Set-up → loading → execution → completion"
+}
+
+# -------------------- Optional cloud persistence --------------------
 def get_supabase():
     try:
-        url = st.secrets["SUPABASE_URL"]
-        key = st.secrets["SUPABASE_ANON_KEY"]
         from supabase import create_client
-        return create_client(url, key)
+        return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
     except Exception:
         return None
-
 supabase = get_supabase()
 
-def db_enabled():
-    return supabase is not None
-
-def set_profile(user, role, display_name):
-    if not db_enabled(): return
+def save_cloud_session(row):
+    if not supabase or st.session_state.get("preview") or not st.session_state.get("user"):
+        return False
     try:
-        supabase.table("profiles").upsert({
-            "id": user.id, "email": user.email, "display_name": display_name,
-            "role": role, "updated_at": datetime.now(timezone.utc).isoformat()
+        supabase.table("analysis_sessions").insert({
+            "user_id": st.session_state.user.id,
+            "athlete_name": row["athlete"], "sport": row["sport"],
+            "movement": row["movement"], "video_name": row["video"],
+            "analysis_date": row["date"], "frames_analysed": row["frames"],
+            "detection_rate": row["detection_rate"], "summary": row["summary"]
         }).execute()
+        return True
     except Exception as e:
-        st.error(f"Could not save profile: {e}")
+        st.warning(f"Cloud save unavailable: {e}")
+        return False
 
-def current_profile():
-    if not db_enabled() or not st.session_state.get("user"): return None
+def load_cloud_sessions():
+    if not supabase or st.session_state.get("preview") or not st.session_state.get("user"):
+        return []
     try:
-        res = supabase.table("profiles").select("*").eq("id", st.session_state.user.id).maybe_single().execute()
-        return res.data
+        r=supabase.table("analysis_sessions").select("*").eq("user_id",st.session_state.user.id).order("created_at",desc=True).limit(100).execute()
+        return [{"athlete":x.get("athlete_name",""),"sport":x.get("sport",""),"movement":x.get("movement",""),
+                 "video":x.get("video_name",""),"date":x.get("analysis_date",""),"frames":x.get("frames_analysed",0),
+                 "detection_rate":x.get("detection_rate",0),"summary":x.get("summary",{})} for x in (r.data or [])]
     except Exception:
-        return None
+        return []
 
+# -------------------- Geometry / analysis --------------------
+def angle_3pt(a,b,c):
+    if any(p is None for p in (a,b,c)): return np.nan
+    u=np.asarray(a)-np.asarray(b); v=np.asarray(c)-np.asarray(b)
+    d=np.linalg.norm(u)*np.linalg.norm(v)
+    if d<1e-8:return np.nan
+    return float(np.degrees(np.arccos(np.clip(np.dot(u,v)/d,-1,1))))
 
+def mid(a,b):
+    return None if a is None or b is None else ((a[0]+b[0])/2,(a[1]+b[1])/2)
 
-
-@st.cache_data(show_spinner=False)
-def build_homepage_pose_demo(video_path):
-    """Create a genuine MediaPipe pose-overlay version of the supplied demo clip."""
-    import cv2
-    import mediapipe as mp
-    import tempfile, os
-    cap = cv2.VideoCapture(video_path)
+def extract_video(uploaded, step, max_samples, complexity, visibility_cutoff):
+    import cv2, mediapipe as mp
+    raw=uploaded.getvalue()
+    suffix=os.path.splitext(uploaded.name)[1].lower() or ".mp4"
+    tmp=tempfile.NamedTemporaryFile(delete=False,suffix=suffix)
+    tmp.write(raw); tmp.close()
+    cap=cv2.VideoCapture(tmp.name)
     if not cap.isOpened():
-        raise RuntimeError("The demonstration video could not be opened.")
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-    output_path = tmp.name
-    tmp.close()
-    writer = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
-    pose_api = mp.solutions.pose
-    drawing = mp.solutions.drawing_utils
-    detected = total = 0
+        os.unlink(tmp.name)
+        raise ValueError("Could not decode this file. Export as MP4 (H.264) and try again.")
+    fps=float(cap.get(cv2.CAP_PROP_FPS) or 30)
+    total=int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    width=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0); height=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    pose_api=mp.solutions.pose; draw=mp.solutions.drawing_utils
+    records=[]; thumbs=[]; annotated_frames=[]
+    pose=pose_api.Pose(static_image_mode=False,model_complexity=complexity,smooth_landmarks=True,
+                       min_detection_confidence=.5,min_tracking_confidence=.5)
+    idx=0; samples=0
+    prog=st.progress(0,text="Reading video and tracking landmarks…")
     try:
-        with pose_api.Pose(static_image_mode=False, model_complexity=1,
-                           smooth_landmarks=True, min_detection_confidence=.5,
-                           min_tracking_confidence=.5) as pose:
-            while True:
-                ok, frame = cap.read()
-                if not ok:
-                    break
-                result = pose.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                total += 1
-                if result.pose_landmarks:
-                    detected += 1
-                    drawing.draw_landmarks(
-                        frame, result.pose_landmarks, pose_api.POSE_CONNECTIONS,
-                        drawing.DrawingSpec(color=(80, 210, 145), thickness=3, circle_radius=3),
-                        drawing.DrawingSpec(color=(40, 130, 85), thickness=2, circle_radius=2)
-                    )
-                cv2.putText(frame, "MOTIONLAB  |  2D POSE TRACKING", (18, 38),
-                            cv2.FONT_HERSHEY_SIMPLEX, .72, (245, 255, 248), 2, cv2.LINE_AA)
-                writer.write(frame)
+        while cap.isOpened() and samples<max_samples:
+            ok,frame=cap.read()
+            if not ok:break
+            if idx%step==0:
+                h,w=frame.shape[:2]
+                res=pose.process(cv2.cvtColor(frame,cv2.COLOR_BGR2RGB))
+                row={"frame":idx,"time_s":idx/fps,"pose_detected":bool(res.pose_landmarks)}
+                if res.pose_landmarks:
+                    lm=res.pose_landmarks.landmark; P=pose_api.PoseLandmark
+                    def p(name):
+                        q=lm[getattr(P,name).value]
+                        if float(q.visibility)<visibility_cutoff:return None
+                        return (float(q.x*w),float(q.y*h))
+                    # Core bilateral joint angles, projected in image plane
+                    for side in ["LEFT","RIGHT"]:
+                        row[f"{side.lower()}_knee_angle_deg"]=angle_3pt(p(side+"_HIP"),p(side+"_KNEE"),p(side+"_ANKLE"))
+                        row[f"{side.lower()}_hip_angle_deg"]=angle_3pt(p(side+"_SHOULDER"),p(side+"_HIP"),p(side+"_KNEE"))
+                        row[f"{side.lower()}_ankle_angle_deg"]=angle_3pt(p(side+"_KNEE"),p(side+"_ANKLE"),p(side+"_FOOT_INDEX"))
+                        row[f"{side.lower()}_elbow_angle_deg"]=angle_3pt(p(side+"_SHOULDER"),p(side+"_ELBOW"),p(side+"_WRIST"))
+                        row[f"{side.lower()}_shoulder_angle_deg"]=angle_3pt(p(side+"_ELBOW"),p(side+"_SHOULDER"),p(side+"_HIP"))
+                    shoulder=mid(p("LEFT_SHOULDER"),p("RIGHT_SHOULDER"))
+                    hip=mid(p("LEFT_HIP"),p("RIGHT_HIP"))
+                    ankle=mid(p("LEFT_ANKLE"),p("RIGHT_ANKLE"))
+                    wrist=mid(p("LEFT_WRIST"),p("RIGHT_WRIST"))
+                    row["trunk_lean_deg"]=np.nan if shoulder is None or hip is None else float(np.degrees(np.arctan2(abs(shoulder[0]-hip[0]),abs(shoulder[1]-hip[1]))))
+                    row["shoulder_line_deg"]=np.nan if p("LEFT_SHOULDER") is None or p("RIGHT_SHOULDER") is None else float(np.degrees(np.arctan2(p("RIGHT_SHOULDER")[1]-p("LEFT_SHOULDER")[1],p("RIGHT_SHOULDER")[0]-p("LEFT_SHOULDER")[0])))
+                    row["hip_line_deg"]=np.nan if p("LEFT_HIP") is None or p("RIGHT_HIP") is None else float(np.degrees(np.arctan2(p("RIGHT_HIP")[1]-p("LEFT_HIP")[1],p("RIGHT_HIP")[0]-p("LEFT_HIP")[0])))
+                    row["projected_shoulder_hip_separation_deg"]=abs(row["shoulder_line_deg"]-row["hip_line_deg"]) if pd.notna(row["shoulder_line_deg"]) and pd.notna(row["hip_line_deg"]) else np.nan
+                    row["body_centre_x_px"]=np.nan if hip is None else hip[0]
+                    row["body_centre_y_px"]=np.nan if hip is None else hip[1]
+                    row["left_ankle_x_px"]=np.nan if p("LEFT_ANKLE") is None else p("LEFT_ANKLE")[0]
+                    row["right_ankle_x_px"]=np.nan if p("RIGHT_ANKLE") is None else p("RIGHT_ANKLE")[0]
+                    row["left_wrist_x_px"]=np.nan if p("LEFT_WRIST") is None else p("LEFT_WRIST")[0]
+                    row["right_wrist_x_px"]=np.nan if p("RIGHT_WRIST") is None else p("RIGHT_WRIST")[0]
+                    row["mean_landmark_visibility"]=float(np.mean([q.visibility for q in lm]))
+                    annotated=frame.copy()
+                    draw.draw_landmarks(annotated,res.pose_landmarks,pose_api.POSE_CONNECTIONS)
+                    cv2.putText(annotated,f'{idx/fps:.3f}s',(18,32),cv2.FONT_HERSHEY_SIMPLEX,.8,(70,180,115),2,cv2.LINE_AA)
+                    annotated_frames.append((idx/fps,cv2.cvtColor(annotated,cv2.COLOR_BGR2RGB)))
+                    if len(thumbs)<12:thumbs.append(cv2.cvtColor(annotated,cv2.COLOR_BGR2RGB))
+                else:
+                    row["mean_landmark_visibility"]=0.0
+                records.append(row); samples+=1
+                if total:prog.progress(min(idx/total,1),text=f"Tracking frame {idx}/{total}")
+            idx+=1
     finally:
-        cap.release()
-        writer.release()
-    with open(output_path, "rb") as f:
-        rendered = f.read()
-    try:
-        os.unlink(output_path)
-    except OSError:
-        pass
-    return rendered, (100.0 * detected / total if total else 0.0), total
+        pose.close();cap.release()
+        try:os.unlink(tmp.name)
+        except OSError:pass
+    prog.empty()
+    if not records:raise ValueError("No video frames were analysed.")
+    df=pd.DataFrame(records)
+    # Differentiation only describes image-plane motion; scale calibration is optional.
+    dt=df["time_s"].diff()
+    for col in ["body_centre_x_px","body_centre_y_px","left_ankle_x_px","right_ankle_x_px","left_wrist_x_px","right_wrist_x_px"]:
+        if col in df:
+            df[col.replace("_px","_px_s")]=df[col].diff()/dt
+    return {"df":df,"fps":fps,"total_frames":total,"duration":total/fps if fps else 0,
+            "width":width,"height":height,"thumbnails":thumbs,"annotated":annotated_frames}
 
+def add_manual_event_metrics(df, fps, event_frames, px_per_m=None):
+    out=df.copy()
+    for name,frame in event_frames.items():
+        if frame is not None:
+            out[f"event_{name}"]=(out["frame"]-int(frame)).abs().le(0)
+    # event intervals in seconds, derived only from user-entered event frames and original fps
+    def interval(a,b):
+        if a is None or b is None or int(b)<=int(a):return np.nan
+        return (int(b)-int(a))/fps
+    intervals={}
+    for a,b,label in [
+        ("bfc_start","bfc_end","BFC contact time"),
+        ("ffc_start","ffc_end","FFC contact time"),
+        ("runup_start","bfc_start","Run-up duration"),
+        ("bfc_start","release","BFC to release"),
+        ("ffc_start","release","FFC to release")
+    ]: intervals[label]=interval(event_frames.get(a),event_frames.get(b))
+    # stride length from selected ankle coordinates at event frames, calibrated scale only
+    stride=np.nan
+    if px_per_m and event_frames.get("bfc_start") is not None and event_frames.get("ffc_start") is not None:
+        a=out.iloc[(out.frame-int(event_frames["bfc_start"])).abs().argmin()]
+        b=out.iloc[(out.frame-int(event_frames["ffc_start"])).abs().argmin()]
+        # Side-view horizontal displacement between the best-visible ankle centres; use user-selected side if known
+        vals=[]
+        for col in ["left_ankle_x_px","right_ankle_x_px"]:
+            if pd.notna(a.get(col)) and pd.notna(b.get(col)):vals.append(abs(float(b[col])-float(a[col]))/float(px_per_m))
+        if vals:stride=max(vals)
+    return out,intervals,stride
 
-def landing_page():
-    """Public marketing homepage shown before account sign-in."""
-    st.markdown("""
-    <div class="ml-nav">
-      <div class="ml-brand">MOTION<span>LAB</span></div>
-      <div class="ml-navlinks">PLATFORM &nbsp;&nbsp;&nbsp; BIOMECHANICS &nbsp;&nbsp;&nbsp; PERFORMANCE &nbsp;&nbsp;&nbsp; FOR COACHES</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    left, right = st.columns([1.05, 1], gap="large", vertical_alignment="center")
-    with left:
-        st.markdown('<div class="ml-kicker">SPORTS BIOMECHANICS · PERFORMANCE ANALYSIS</div>', unsafe_allow_html=True)
-        st.markdown('<div class="ml-hero-title">Understand<br>movement.<br><span style="color:#52765e">Build performance.</span></div>', unsafe_allow_html=True)
-        st.markdown('<div class="ml-hero-copy">Video-based movement analysis for athletes, coaches and performance programmes. Review technique, examine movement patterns and make better-informed training decisions.</div>', unsafe_allow_html=True)
-        st.write("")
-        cta1, cta2 = st.columns([1,1])
-        with cta1:
-            if st.button("Explore the platform  →", use_container_width=True, key="landing_explore"):
-                st.session_state["show_auth"] = True
-                st.session_state["auth_mode"] = "Create account"
-                st.rerun()
-        with cta2:
-            if st.button("Sign in", use_container_width=True, key="landing_signin"):
-                st.session_state["show_auth"] = True
-                st.session_state["auth_mode"] = "Sign in"
-                st.rerun()
-        st.markdown('<div class="ml-small" style="margin-top:14px">BUILT FOR ATHLETES · COACHES · ACADEMIES · TEAMS</div>', unsafe_allow_html=True)
-    with right:
-        st.markdown('<div class="ml-hero-panel">', unsafe_allow_html=True)
-        st.image("https://images.unsplash.com/photo-1552674605-db6ffd4facb5?auto=format&fit=crop&w=1500&q=85",
-                 use_container_width=True, caption="Performance happens in the details.")
-        st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('<div class="ml-photo-caption">MOVEMENT REVIEW · TECHNIQUE · PERFORMANCE DEVELOPMENT</div>', unsafe_allow_html=True)
-
-    st.markdown("<div style='height:55px'></div>", unsafe_allow_html=True)
-    st.markdown('<div class="ml-kicker">THE MOTIONLAB PLATFORM</div>', unsafe_allow_html=True)
-    st.markdown('<div class="ml-section-title">From video to a clearer view of movement.</div>', unsafe_allow_html=True)
-    st.markdown('<p class="ml-hero-copy" style="font-size:.98rem">A practical workspace that brings video review and accessible biomechanical measurements into one place.</p>', unsafe_allow_html=True)
-
-    f1, f2, f3 = st.columns(3, gap="large")
-    features = [
-        ("01", "Biomechanical review", "Inspect 2D joint-angle estimates, body positions and movement patterns across sampled video frames."),
-        ("02", "Video-based analysis", "Upload a movement clip, review pose tracking and follow selected measurements over time."),
-        ("03", "Performance development", "Keep athlete sessions organised and use consistent video review to inform coaching decisions.")
-    ]
-    for col, item in zip([f1,f2,f3], features):
-        with col:
-            st.markdown(f'<div class="ml-feature"><div class="ml-feature-no">{item[0]}</div><div class="ml-feature-title">{item[1]}</div><div class="ml-feature-copy">{item[2]}</div></div>', unsafe_allow_html=True)
-
-    st.markdown("<div style='height:40px'></div>", unsafe_allow_html=True)
-    st.markdown('<div class="ml-kicker">MOTIONLAB IN ACTION</div>', unsafe_allow_html=True)
-    st.markdown('<div class="ml-section-title">From bowling footage to visible movement patterns.</div>', unsafe_allow_html=True)
-    st.markdown('<p class="ml-hero-copy" style="font-size:.98rem">Explore the supplied bowling demonstration in its original form and with MotionLab’s 2D pose-tracking overlay.</p>', unsafe_allow_html=True)
-
-    demo_path = os.path.join(os.path.dirname(__file__), "demo_bowling.mp4")
-    if os.path.exists(demo_path):
-        raw_col, tracked_col = st.columns(2, gap="large")
-        with raw_col:
-            st.markdown("**01 / ORIGINAL FOOTAGE**")
-            with open(demo_path, "rb") as video_file:
-                st.video(video_file.read(), autoplay=True, loop=True, muted=True)
-            st.caption("Original supplied bowling footage.")
-        with tracked_col:
-            st.markdown("**02 / 2D POSE-TRACKING OVERLAY**")
+# -------------------- Marketing / auth --------------------
+def landing():
+    st.markdown('<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e6ebe5;padding:8px 0 22px"><div class="ml-brand">MOTION<span>LAB</span></div><div style="color:#59675d;font-size:.82rem;font-weight:700">PLATFORM　 BIOMECHANICS　 PERFORMANCE　 FOR COACHES</div></div>',unsafe_allow_html=True)
+    l,r=st.columns([1.02,1],gap="large",vertical_alignment="center")
+    with l:
+        st.markdown('<div class="ml-kicker" style="font-size:.82rem">SPORTS BIOMECHANICS · PERFORMANCE ANALYSIS</div>',unsafe_allow_html=True)
+        st.markdown('<div class="ml-hero">Understand<br>movement.<br><span style="color:#527b5c">Build performance.</span></div>',unsafe_allow_html=True)
+        st.markdown('<div class="ml-muted" style="font-size:1.08rem;max-width:580px">A video-first workspace for athletes, coaches and performance teams. Break movement into phases, inspect mechanics and build a clearer picture of performance.</div>',unsafe_allow_html=True)
+        a,b=st.columns(2)
+        with a:
+            if st.button("Explore the platform →",use_container_width=True,key="hero_explore"):
+                st.session_state.show_auth=True;st.session_state.auth_mode="Create account";st.rerun()
+        with b:
+            if st.button("Sign in",use_container_width=True,key="hero_signin"):
+                st.session_state.show_auth=True;st.session_state.auth_mode="Sign in";st.rerun()
+        st.caption("BUILT FOR ATHLETES · COACHES · ACADEMIES · TEAMS")
+    with r:
+        demo_path="demo_bowling.mp4"
+        if os.path.exists(demo_path):
             try:
-                with st.spinner("Preparing the real pose-tracking preview…"):
-                    overlay_bytes, detection_rate, frame_count = build_homepage_pose_demo(demo_path)
-                st.video(overlay_bytes, autoplay=True, loop=True, muted=True)
-                st.caption(f"MediaPipe pose landmarks rendered across {frame_count} frames · detection on {detection_rate:.0f}% of frames.")
-            except Exception as exc:
-                st.warning("The original footage is available. The pose-overlay preview could not be generated in this deployment. The full analysis workspace remains available after sign-in.")
-                st.caption(f"Technical detail: {exc}")
-        st.markdown('<div class="ml-small">The overlay is generated by MotionLab’s current 2D pose-estimation pipeline. It is an image-based visualisation, not a 3D biomechanical assessment or a measurement of force, joint loading or ball-release speed.</div>', unsafe_allow_html=True)
-    else:
-        st.warning("The demonstration video asset is missing. Add assets/demo_bowling.mp4 to the GitHub repository to display it here.")
-    st.markdown("<div style='height:38px'></div>", unsafe_allow_html=True)
-    st.markdown("""
-    <div class="ml-cta">
-      <div class="ml-kicker" style="color:#c1d5c4">FOR THE PEOPLE WHO DEVELOP PERFORMANCE</div>
-      <h2 style="font-size:2rem;letter-spacing:-.05em;margin:10px 0">Make every review more purposeful.</h2>
-      <p style="color:#e1e9e2;max-width:650px;line-height:1.7">Bring movement footage into a considered workspace for athletes and coaches. Start with a video, examine the details and build a more consistent review process.</p>
-    </div>
-    """, unsafe_allow_html=True)
-    if st.button("Enter MotionLab  →", use_container_width=True, key="landing_bottom_enter"):
-        st.session_state["show_auth"] = True
-        st.session_state["auth_mode"] = "Create account"
-        st.rerun()
-    st.markdown("<div style='border-top:1px solid #e5ebe5;margin-top:44px;padding-top:18px;color:#7c887f;font-size:.75rem'>MOTIONLAB · SPORTS BIOMECHANICS & PERFORMANCE ANALYSIS</div>", unsafe_allow_html=True)
+                # Strip the audio stream from the homepage asset (not merely mute playback).
+                import base64
+                import imageio_ffmpeg
+                source_bytes=open(demo_path,"rb").read()
+                cache_key=str(os.path.getsize(demo_path))+"_"+str(int(os.path.getmtime(demo_path)))
+                silent_path=os.path.join(tempfile.gettempdir(),"motionlab_home_demo_no_audio.mp4")
+                if not os.path.exists(silent_path) or os.path.getsize(silent_path)==0:
+                    ffmpeg=imageio_ffmpeg.get_ffmpeg_exe()
+                    subprocess.run([ffmpeg,"-y","-i",demo_path,"-an","-c:v","libx264","-preset","veryfast","-crf","25","-movflags","+faststart",silent_path],
+                                   stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=True)
+                data=open(silent_path,"rb").read()
+                encoded=base64.b64encode(data).decode("ascii")
+                st.markdown(f"""<div style="border:1px solid #e3e9e2;border-radius:14px;overflow:hidden;background:#111"><video autoplay muted loop playsinline controls style="width:100%;display:block"><source src="data:video/mp4;base64,{encoded}" type="video/mp4"></video></div><div style="font-size:.7rem;letter-spacing:.12em;color:#6b796f;margin-top:9px">MOTIONLAB VIDEO REVIEW · AUDIO TRACK REMOVED</div>""",unsafe_allow_html=True)
+            except Exception as e:st.info(f"Could not prepare the homepage demo. Check that demo_bowling.mp4 is a valid MP4. Details: {e}")
+        else:
+            st.markdown("<div class='ml-card' style='background:#f4f7f2;padding:48px 25px;text-align:center'><div class='ml-kicker'>VIDEO-BASED ANALYSIS</div><h2>From footage<br>to movement data.</h2><p class='ml-muted'>Upload your licensed demonstration clip as demo_bowling.mp4.</p></div>",unsafe_allow_html=True)
+    st.markdown("<div style='height:48px'></div>",unsafe_allow_html=True)
+    st.markdown('<div class="ml-kicker">THE MOTIONLAB PLATFORM</div><div class="ml-section">Everything around the movement.</div>',unsafe_allow_html=True)
+    features=[("01","Biomechanical analysis","Joint angles, body positions, phase timing and calibrated distance estimates."),
+              ("02","Video intelligence","Slow review, pose overlay, frame timeline and event tagging."),
+              ("03","Performance monitoring","Session history, athlete profiles, comparisons and coach workflows."),
+              ("04","Multi-sport workflows","Cricket, baseball, football, basketball, tennis, sprinting and general movement.")]
+    cols=st.columns(4)
+    for c,(n,t,d) in zip(cols,features):
+        with c:st.markdown(f"<div class='ml-card' style='height:190px'><div class='ml-kicker'>{n}</div><h3>{t}</h3><p class='ml-muted'>{d}</p></div>",unsafe_allow_html=True)
+    st.markdown("<div style='height:42px'></div>",unsafe_allow_html=True)
+    x,y=st.columns([1.2,1])
+    with x:
+        st.markdown('<div class="ml-kicker">ANALYSIS THAT SHOWS ITS WORK</div><div class="ml-section">Every phase. Every frame we can measure.</div><p class="ml-muted">Review detected landmarks, inspect joint-angle timelines, mark key events and export the underlying data. Measurements are labelled by how they are obtained.</p>',unsafe_allow_html=True)
+    with y:
+        st.markdown("<div class='ml-card'><b>VIDEO-DERIVED</b><p class='ml-muted'>Projected joint angles, landmark positions and image-plane movement.</p><hr><b>EVENT-BASED</b><p class='ml-muted'>Contact times and phase intervals from frame markers you confirm.</p><hr><b>CALIBRATED</b><p class='ml-muted'>Distance and speed estimates only after you enter a known scale reference.</p></div>",unsafe_allow_html=True)
+    st.markdown("<div style='margin-top:45px;border-top:1px solid #e4eae3;padding-top:18px;color:#778379;font-size:.75rem'>MOTIONLAB · SPORTS BIOMECHANICS & PERFORMANCE INTELLIGENCE</div>",unsafe_allow_html=True)
 
-
-def auth_screen():
-    if st.session_state.get("show_auth") and st.button("← Back to MotionLab homepage"):
-        st.session_state["show_auth"] = False
-        st.rerun()
-    st.markdown("<div style='max-width:560px;margin:5vh auto 0'>", unsafe_allow_html=True)
-    st.markdown("<div class='ml-eyebrow'>SPORTS SCIENCE, MADE PRACTICAL</div>", unsafe_allow_html=True)
-    st.title("MotionLab")
-    st.markdown("### Better movement starts with better observation.")
-    st.write("A considered workspace for athletes and coaches to review movement, track sessions and make training decisions with more context.")
-    if not db_enabled():
-        st.warning("Account sign-in is not connected yet. Add your Supabase keys during deployment to enable real registration and persistent accounts.")
-        st.info("You can still explore the analysis workspace in local preview mode. Preview data is stored only for this browser session.")
-        with st.form("preview_login"):
-            name = st.text_input("Your name", "Demo user")
-            role = st.selectbox("I am a", ["Athlete", "Coach"])
-            go = st.form_submit_button("Enter preview workspace", use_container_width=True)
-        if go:
-            st.session_state.user = type("PreviewUser", (), {"id":"preview", "email":"preview@motionlab.local"})()
-            st.session_state.role = role.lower()
-            st.session_state.display_name = name
-            st.session_state.preview = True
-            st.rerun()
-    else:
-        tab1, tab2 = st.tabs(["Sign in", "Create account"])
-        with tab1:
-            with st.form("login"):
-                email = st.text_input("Email")
-                password = st.text_input("Password", type="password")
-                submit = st.form_submit_button("Sign in", use_container_width=True)
-            if submit:
+def auth():
+    st.markdown('<div class="ml-kicker">ATHLETE & COACH WORKSPACE</div>',unsafe_allow_html=True)
+    st.title("Welcome to MotionLab.")
+    st.markdown('<p class="ml-muted">Sign in to your workspace or create an account to begin reviewing movement.</p>',unsafe_allow_html=True)
+    if st.button("← Back to homepage"):st.session_state.show_auth=False;st.rerun()
+    if supabase:
+        t1,t2=st.tabs(["Sign in","Create account"])
+        with t1:
+            with st.form("signin"):
+                email=st.text_input("Email");password=st.text_input("Password",type="password")
+                go=st.form_submit_button("Sign in",use_container_width=True)
+            if go:
                 try:
-                    res = supabase.auth.sign_in_with_password({"email":email, "password":password})
-                    st.session_state.user = res.user
-                    st.session_state.preview = False
-                    prof = current_profile()
-                    st.session_state.role = (prof or {}).get("role", "athlete")
-                    st.session_state.display_name = (prof or {}).get("display_name", email.split("@")[0])
+                    res=supabase.auth.sign_in_with_password({"email":email,"password":password})
+                    st.session_state.user=res.user;st.session_state.preview=False
+                    st.session_state.role="athlete";st.session_state.display_name=email.split("@")[0]
                     st.rerun()
-                except Exception as e: st.error(f"Sign-in failed: {e}")
-        with tab2:
+                except Exception as e:st.error(f"Sign in failed: {e}")
+        with t2:
             with st.form("signup"):
-                name = st.text_input("Full name")
-                email = st.text_input("Email address")
-                password = st.text_input("Password (at least 8 characters)", type="password")
-                role = st.selectbox("Create account as", ["Athlete", "Coach"])
-                submit = st.form_submit_button("Create account", use_container_width=True)
-            if submit:
-                if len(password) < 8: st.error("Please use a password with at least 8 characters.")
-                elif not name.strip() or not email.strip(): st.error("Please complete all fields.")
+                name=st.text_input("Full name");email=st.text_input("Email");pw=st.text_input("Password (8+ characters)",type="password")
+                role=st.selectbox("Account type",["Athlete","Coach","Academy / Team"])
+                go=st.form_submit_button("Create account",use_container_width=True)
+            if go:
+                if len(pw)<8:st.error("Use at least 8 characters.")
+                elif not name.strip() or not email.strip():st.error("Complete all fields.")
                 else:
                     try:
-                        res = supabase.auth.sign_up({"email":email, "password":password,
-                            "options":{"data":{"display_name":name,"role":role.lower()}}})
-                        if res.user:
-                            set_profile(res.user, role.lower(), name.strip())
-                            st.success("Account created. If email confirmation is enabled, verify your email before signing in.")
-                    except Exception as e: st.error(f"Registration failed: {e}")
-    st.markdown("</div>", unsafe_allow_html=True)
+                        res=supabase.auth.sign_up({"email":email,"password":pw,"options":{"data":{"display_name":name,"role":role.lower()}}})
+                        if res.user:st.success("Account created. Check your email if verification is enabled.")
+                    except Exception as e:st.error(f"Registration failed: {e}")
+    else:
+        st.warning("Cloud authentication is not configured. You can explore the workspace in preview mode; preview data is not persistent.")
+        with st.form("preview_login"):
+            name=st.text_input("Your name",value="Demo user");role=st.selectbox("I am a",["Athlete","Coach","Academy / Team"])
+            go=st.form_submit_button("Enter preview workspace",use_container_width=True)
+        if go:
+            st.session_state.user=type("PreviewUser",(),{"id":"preview","email":"preview@motionlab.local"})()
+            st.session_state.role=role.lower();st.session_state.display_name=name;st.session_state.preview=True;st.rerun()
 
 if "user" not in st.session_state:
-    if st.session_state.get("show_auth"):
-        auth_screen()
-    else:
-        landing_page()
+    if st.session_state.get("show_auth"):auth()
+    else:landing()
     st.stop()
 
-# ---------- Sidebar ----------
+# -------------------- Workspace navigation --------------------
 with st.sidebar:
-    st.markdown("# ◒ MotionLab")
-    st.markdown("<div style='font-size:.62rem;letter-spacing:.16em;color:#9eb3a2;font-weight:800;margin-top:-8px'>BIOMECHANICS / PERFORMANCE</div>", unsafe_allow_html=True)
+    st.markdown("# MOTIONLAB")
+    st.caption("SPORTS BIOMECHANICS & PERFORMANCE")
     st.markdown("---")
-    role = st.session_state.get("role","athlete")
-    name = st.session_state.get("display_name","Member")
-    st.markdown(f"**{name}**")
-    st.caption(role.title() + " workspace")
-    page = st.radio("WORKSPACE", ["Overview", "Analyse movement", "Athletes", "Session history", "Account"], label_visibility="visible")
+    display=st.session_state.get("display_name","Member")
+    role=st.session_state.get("role","athlete")
+    st.markdown(f"**{display}**")
+    st.caption(role.title()+" workspace")
+    page=st.radio("WORKSPACE",["Overview","Video analysis","Athletes","Session history","Reports","Team workspace","Account"])
     st.markdown("---")
-    st.caption("Built for thoughtful coaching.")
-    if st.button("Sign out", use_container_width=True):
-        if db_enabled():
-            try: supabase.auth.sign_out()
-            except Exception: pass
-        for k in ["user","role","display_name","preview","last_result"]:
-            st.session_state.pop(k, None)
+    if st.button("Sign out",use_container_width=True):
+        if supabase and not st.session_state.get("preview"):
+            try:supabase.auth.sign_out()
+            except Exception:pass
+        for k in ["user","role","display_name","preview","last_result"]:st.session_state.pop(k,None)
         st.rerun()
 
-# ---------- Data access ----------
-def save_session(row):
-    st.session_state.setdefault("sessions", [])
-    st.session_state.sessions.insert(0, row)
-    if db_enabled() and not st.session_state.get("preview"):
-        try:
-            supabase.table("analysis_sessions").insert({
-                "user_id": st.session_state.user.id,
-                "athlete_name": row["athlete"],
-                "sport": row["sport"], "movement": row["movement"],
-                "video_name": row["video"], "analysis_date": row["date"],
-                "frames_analysed": row["frames"], "detection_rate": row["detection_rate"],
-                "summary": row["summary"]
-            }).execute()
-        except Exception as e:
-            st.warning(f"Analysis completed, but cloud session history could not be saved: {e}")
+def header(kicker,title,subtitle):
+    st.markdown(f'<div class="ml-kicker">{kicker}</div>',unsafe_allow_html=True)
+    st.title(title);st.markdown(f'<div class="ml-muted">{subtitle}</div>',unsafe_allow_html=True)
 
-def load_sessions():
-    rows = list(st.session_state.get("sessions", []))
-    if db_enabled() and not st.session_state.get("preview"):
-        try:
-            res = supabase.table("analysis_sessions").select("*").eq("user_id", st.session_state.user.id).order("created_at", desc=True).limit(100).execute()
-            rows = [{
-                "athlete":r.get("athlete_name",""), "sport":r.get("sport",""),
-                "movement":r.get("movement",""), "video":r.get("video_name",""),
-                "date":r.get("analysis_date",""), "frames":r.get("frames_analysed",0),
-                "detection_rate":r.get("detection_rate",0), "summary":r.get("summary",{})
-            } for r in (res.data or [])]
-        except Exception:
-            pass
-    return rows
+st.session_state.setdefault("sessions",[])
+st.session_state.setdefault("athlete_records",[])
+sessions=list(st.session_state.sessions)
+if not st.session_state.get("preview"):sessions=load_cloud_sessions()+sessions
 
-def page_header(kicker, title, subtitle):
-    st.markdown(
-        f"<div class='ml-page-intro'><div class='ml-eyebrow'>{kicker}</div>"
-        f"<h1 style='margin:.55rem 0 .35rem'>{title}</h1>"
-        f"<div class='ml-muted'>{subtitle}</div></div>",
-        unsafe_allow_html=True
-    )
-
-# ---------- Pages ----------
-if page == "Overview":
-    sessions = load_sessions()
-    total = len(sessions)
-    athletes = len(set(x.get("athlete","") for x in sessions if x.get("athlete")))
-    avg = np.mean([x.get("detection_rate",0) for x in sessions]) if sessions else 0
-    page_header("PERFORMANCE WORKSPACE", f"Welcome back, {name.split()[0]}.", "Your workspace for reviewing movement, tracking sessions and developing performance.")
-    a,b,c = st.columns(3)
-    a.metric("Analysis sessions", total)
-    b.metric("Athletes reviewed", athletes)
-    c.metric("Average pose detection", f"{avg:.0f}%" if sessions else "—")
-    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-    left,right = st.columns([1.35,1], gap="large")
-    with left:
-        st.markdown("<div class='ml-panel'><div class='ml-section-kicker'>START A REVIEW</div><h2 style='margin:.6rem 0'>Turn footage into a movement review.</h2><p class='ml-muted'>Bring a training clip into MotionLab. Track visible body landmarks, inspect 2D joint-angle estimates and review how selected measurements change through the action.</p></div>", unsafe_allow_html=True)
-        if st.button("Open movement analysis  →", use_container_width=True):
-            st.session_state.nav_override="Analyse movement"; st.rerun()
-    with right:
-        st.markdown("<div class='ml-panel-soft'><div class='ml-section-kicker'>BUILT AROUND THE DETAILS</div><h3>Observe. Measure. Interpret.</h3><p class='ml-muted'>Use consistent camera positions, clear event labels and coach expertise. Measurements are only as reliable as the footage and calibration behind them.</p></div>", unsafe_allow_html=True)
-        st.markdown("<div style='height:12px'></div><div class='ml-panel-soft'><div class='ml-section-kicker'>YOUR WORKSPACE</div><h3>"+("Cloud connected" if db_enabled() and not st.session_state.get("preview") else "Local preview")+"</h3><p class='ml-muted'>"+("Your account is connected to cloud session storage." if db_enabled() else "Connect Supabase to enable persistent cloud records across devices.")+"</p></div>", unsafe_allow_html=True)
-    st.markdown("## Recent analysis")
+if page=="Overview":
+    header("PERFORMANCE WORKSPACE","Movement, understood.","Your central workspace for video reviews, athlete records and performance observations.")
+    a,b,c,d=st.columns(4)
+    a.metric("Sessions reviewed",len(sessions))
+    b.metric("Athletes tracked",len(st.session_state.athlete_records))
+    c.metric("Sports covered",len(set(x.get("sport","") for x in sessions)) if sessions else "—")
+    d.metric("Latest review",sessions[0]["date"][:10] if sessions else "—")
+    st.markdown("### Your next review")
+    l,r=st.columns([1.15,1])
+    with l:
+        st.markdown("<div class='ml-card'><div class='ml-kicker'>VIDEO LAB</div><h2>Start with the footage.</h2><p class='ml-muted'>Upload a clip, select the sport and movement, inspect the pose overlay and mark important events such as BFC, FFC or release.</p></div>",unsafe_allow_html=True)
+        if st.button("Open video analysis →",use_container_width=True):st.session_state.goto_analysis=True;st.rerun()
+    with r:
+        st.markdown("<div class='ml-card'><div class='ml-kicker'>MEASUREMENT STANDARD</div><h3>Know what the number means.</h3><p class='ml-muted'>Video-derived estimates, manually marked event timings and calibrated distances are kept separate. No force or 3D data is fabricated from a 2D clip.</p></div>",unsafe_allow_html=True)
     if sessions:
-        table = pd.DataFrame([{"Date":x["date"],"Athlete":x["athlete"],"Sport":x["sport"],"Movement":x["movement"],"Pose detection":f'{x["detection_rate"]:.0f}%'} for x in sessions[:8]])
-        st.dataframe(table, use_container_width=True, hide_index=True)
-    else:
-        st.markdown("<div class='ml-panel'><h3>Your first analysis starts here.</h3><p class='ml-muted'>Upload a short, well-lit clip with the athlete fully visible. A side-on camera view is useful for many movement reviews.</p></div>", unsafe_allow_html=True)
+        st.markdown("### Recent sessions")
+        st.dataframe(pd.DataFrame([{"Date":x["date"],"Athlete":x["athlete"],"Sport":x["sport"],"Movement":x["movement"],"Detection":f'{x["detection_rate"]:.1f}%'} for x in sessions[:8]]),use_container_width=True,hide_index=True)
+    else:st.info("No completed analyses yet. Your first video review will appear here.")
 
-elif page == "Analyse movement":
-    page_header("BIOMECHANICAL VIDEO REVIEW", "Analyse movement.", "Upload a clip to review visible body positions, 2D joint-angle estimates and movement patterns. Use calibrated footage and manual event labels for timing metrics.")
-    with st.form("analysis_setup"):
-        c1,c2,c3 = st.columns(3)
-        athlete = c1.text_input("Athlete name or ID", value="")
-        sport = c2.selectbox("Sport", ["Cricket / Fast bowling","Baseball / Pitching","Football","Basketball","Tennis","Sprint / Running","General movement"])
-        movement = c3.selectbox("Movement", ["Whole action","Bowling / pitching","Sprint / running","Jump / landing","Squat","Lunge","Overhead / serving"])
-        d1,d2,d3 = st.columns(3)
-        view = d1.selectbox("Camera view", ["Side view","Front view","Rear view","Oblique / unsure"])
-        sample_step = d2.select_slider("Frame sampling", options=[2,3,4,5,6,8,10], value=4, help="Analyse every Nth frame.")
-        max_frames = d3.select_slider("Maximum analysed frames", options=[150,300,450,600,900,1200], value=600)
-        uploaded = st.file_uploader("Choose video", type=["mp4","mov","avi","m4v"])
-        run = st.form_submit_button("Run biomechanics analysis  →", use_container_width=True)
+elif page=="Video analysis":
+    header("VIDEO LAB","Analyse movement.","Upload a video, track the athlete's 2D pose, review movement metrics and confirm key event frames.")
+    with st.form("analysis_form"):
+        a,b,c=st.columns(3)
+        athlete=a.text_input("Athlete name / ID",value="")
+        sport=b.selectbox("Sport",SPORTS)
+        movement=st.selectbox("Movement phase / action",MOVEMENTS[sport],key="movement_select")
+        d,e,f=st.columns(3)
+        camera=d.selectbox("Camera view",["Side-on","Front-on","Rear","Oblique"])
+        step=e.select_slider("Frame sampling",options=[1,2,3,4,5,6,8,10],value=2)
+        max_samples=f.select_slider("Max samples",options=[150,300,450,600,900,1200],value=600)
+        complexity=st.select_slider("Pose model detail",options=[0,1,2],value=1,help="Higher complexity can be slower.")
+        cutoff=st.slider("Minimum landmark visibility",.1,.9,.35,.05)
+        uploaded=st.file_uploader("Upload video (MP4, MOV, AVI)",type=["mp4","mov","avi","m4v"])
+        run=st.form_submit_button("Run pose analysis",use_container_width=True)
     if run:
-        if not athlete.strip(): st.error("Add an athlete name or ID before running the analysis.")
-        elif uploaded is None: st.error("Upload a video first.")
+        if not athlete.strip():st.error("Enter an athlete name or ID.")
+        elif uploaded is None:st.error("Upload a video first.")
         else:
             try:
-                import cv2, mediapipe as mp
-                video = uploaded.getvalue()
-                suffix = "." + uploaded.name.split(".")[-1].lower()
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                    tmp.write(video); path = tmp.name
-                cap = cv2.VideoCapture(path)
-                if not cap.isOpened(): raise ValueError("Could not read this video. Try an MP4 encoded with H.264.")
-                fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-                duration = total_frames / fps if fps else 0
-                pose_model = mp.solutions.pose
-                drawing = mp.solutions.drawing_utils
-                records, snapshots = [], []
-                idx, count = 0, 0
-                progress = st.progress(0, text="Preparing analysis…")
-                pose = pose_model.Pose(static_image_mode=False, model_complexity=1, smooth_landmarks=True, min_detection_confidence=.5, min_tracking_confidence=.5)
-                def point(lm, i, w, h):
-                    p=lm[i]
-                    return (p.x*w,p.y*h) if getattr(p,"visibility",1) >= .35 else None
-                def angle(a,b,c):
-                    if any(p is None for p in (a,b,c)): return np.nan
-                    v1=np.array(a)-np.array(b); v2=np.array(c)-np.array(b)
-                    den=np.linalg.norm(v1)*np.linalg.norm(v2)
-                    if den < 1e-8: return np.nan
-                    return float(np.degrees(np.arccos(np.clip(np.dot(v1,v2)/den,-1,1))))
-                while cap.isOpened() and count < max_frames:
-                    ok, frame = cap.read()
-                    if not ok: break
-                    if idx % sample_step == 0:
-                        h,w=frame.shape[:2]
-                        result=pose.process(cv2.cvtColor(frame,cv2.COLOR_BGR2RGB))
-                        row={"frame":idx,"time_s":idx/fps,"pose_detected":bool(result.pose_landmarks)}
-                        if result.pose_landmarks:
-                            lm=result.pose_landmarks.landmark
-                            P=pose_model.PoseLandmark
-                            row["left_knee_angle_deg"]=angle(point(lm,P.LEFT_HIP.value,w,h),point(lm,P.LEFT_KNEE.value,w,h),point(lm,P.LEFT_ANKLE.value,w,h))
-                            row["right_knee_angle_deg"]=angle(point(lm,P.RIGHT_HIP.value,w,h),point(lm,P.RIGHT_KNEE.value,w,h),point(lm,P.RIGHT_ANKLE.value,w,h))
-                            row["left_elbow_angle_deg"]=angle(point(lm,P.LEFT_SHOULDER.value,w,h),point(lm,P.LEFT_ELBOW.value,w,h),point(lm,P.LEFT_WRIST.value,w,h))
-                            row["right_elbow_angle_deg"]=angle(point(lm,P.RIGHT_SHOULDER.value,w,h),point(lm,P.RIGHT_ELBOW.value,w,h),point(lm,P.RIGHT_WRIST.value,w,h))
-                            row["left_hip_angle_deg"]=angle(point(lm,P.LEFT_SHOULDER.value,w,h),point(lm,P.LEFT_HIP.value,w,h),point(lm,P.LEFT_KNEE.value,w,h))
-                            row["right_hip_angle_deg"]=angle(point(lm,P.RIGHT_SHOULDER.value,w,h),point(lm,P.RIGHT_HIP.value,w,h),point(lm,P.RIGHT_KNEE.value,w,h))
-                            ls,rs=point(lm,P.LEFT_SHOULDER.value,w,h),point(lm,P.RIGHT_SHOULDER.value,w,h)
-                            lh,rh=point(lm,P.LEFT_HIP.value,w,h),point(lm,P.RIGHT_HIP.value,w,h)
-                            if all(p is not None for p in (ls,rs,lh,rh)):
-                                sm=(np.array(ls)+np.array(rs))/2; hm=(np.array(lh)+np.array(rh))/2; v=sm-hm
-                                row["trunk_inclination_deg"]=float(np.degrees(np.arctan2(abs(v[0]),abs(v[1]))))
-                            row["mean_landmark_visibility"]=float(np.mean([x.visibility for x in lm]))
-                            annotated=frame.copy()
-                            drawing.draw_landmarks(annotated,result.pose_landmarks,pose_model.POSE_CONNECTIONS)
-                            cv2.putText(annotated,f'{idx/fps:.2f}s',(18,30),cv2.FONT_HERSHEY_SIMPLEX,.65,(50,170,110),2,cv2.LINE_AA)
-                            if len(snapshots)<8: snapshots.append(cv2.cvtColor(annotated,cv2.COLOR_BGR2RGB))
-                        else: row["mean_landmark_visibility"]=0.0
-                        records.append(row); count += 1
-                        if total_frames: progress.progress(min(idx/total_frames,1.0),text=f"Reviewing frame {idx} of {total_frames}")
-                    idx += 1
-                pose.close(); cap.release()
-                try:
-                    import os; os.unlink(path)
-                except Exception: pass
-                progress.empty()
-                df=pd.DataFrame(records)
-                if df.empty: raise ValueError("No frames could be analysed.")
-                rate=float(df.pose_detected.mean()*100)
-                st.session_state.last_result={"df":df,"athlete":athlete,"sport":sport,"movement":movement,"view":view,"video":uploaded.name,"date":datetime.now().strftime("%Y-%m-%d %H:%M"),"frames":len(df),"detection_rate":rate,"duration":duration,"snapshots":snapshots}
-                metrics=[c for c in df.columns if c.endswith("_deg")]
-                summary={}
-                for col in metrics:
-                    vals=df[col].dropna()
-                    if len(vals): summary[col]={"mean":round(float(vals.mean()),1),"min":round(float(vals.min()),1),"max":round(float(vals.max()),1)}
-                save_session({"athlete":athlete,"sport":sport,"movement":movement,"video":uploaded.name,"date":st.session_state.last_result["date"],"frames":len(df),"detection_rate":rate,"summary":summary})
-                st.success("Analysis complete. Review the measurements below.")
-            except Exception as e:
-                st.error(f"Analysis could not be completed: {e}")
+                with st.spinner("Analysing video…"):
+                    result=extract_video(uploaded,step,max_samples,complexity,cutoff)
+                result.update({"video_bytes":uploaded.getvalue(),"athlete":athlete.strip(),"sport":sport,"movement":movement,"camera":camera,"video":uploaded.name,
+                               "date":datetime.now().strftime("%Y-%m-%d %H:%M")})
+                st.session_state.last_result=result
+                st.success("Pose tracking complete. Add event markers below for contact and phase timing.")
+            except Exception as ex:st.error(f"Analysis failed: {ex}")
     result=st.session_state.get("last_result")
     if result:
-        st.markdown("---")
-        st.markdown("## Analysis results")
-        x1,x2,x3,x4=st.columns(4)
-        x1.metric("Duration",f'{result["duration"]:.1f} s')
-        x2.metric("Frames reviewed",result["frames"])
-        x3.metric("Pose detection",f'{result["detection_rate"]:.1f}%')
-        x4.metric("Camera view",result["view"])
         df=result["df"]
-        angle_cols=[c for c in df.columns if c.endswith("_deg") and df[c].notna().sum()>1]
-        if angle_cols:
-            selected=st.selectbox("Measurement timeline",angle_cols,format_func=lambda s:s.replace("_deg","").replace("_"," ").title())
-            fig=px.line(df.dropna(subset=[selected]),x="time_s",y=selected,markers=True,labels={"time_s":"Time (seconds)",selected:"2D angle estimate (degrees)"})
-            fig.update_layout(template="plotly_white",height=350,margin=dict(l=10,r=10,t=20,b=10),paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="white")
-            st.plotly_chart(fig,use_container_width=True)
-            vals=df[selected].dropna()
-            m1,m2,m3=st.columns(3); m1.metric("Mean",f"{vals.mean():.1f}°"); m2.metric("Minimum",f"{vals.min():.1f}°"); m3.metric("Maximum",f"{vals.max():.1f}°")
-        if result["snapshots"]:
-            st.markdown("### Selected pose frames")
-            cols=st.columns(min(4,len(result["snapshots"])))
-            for i,im in enumerate(result["snapshots"]):
-                cols[i%len(cols)].image(im,use_container_width=True,caption=f"Sample {i+1}")
-        st.download_button("Download frame-by-frame CSV",df.to_csv(index=False).encode(),file_name="motionlab_analysis.csv",mime="text/csv")
-        st.caption("Interpretation: these are 2D projected estimates from a single camera view. This release does not automatically identify sport-specific events such as back-foot contact, front-foot contact, take-off or release, and therefore does not claim validated GCT, stride length or force measurements. Those require calibrated video, validated event detection or manual event annotation.")
+        st.markdown("---")
+        st.markdown("### Session overview")
+        rate=float(df.pose_detected.mean()*100)
+        m1,m2,m3,m4=st.columns(4)
+        m1.metric("Clip duration",f'{result["duration"]:.2f} s')
+        m2.metric("Frames sampled",len(df))
+        m3.metric("Pose detection",f"{rate:.1f}%")
+        m4.metric("Frame rate",f'{result["fps"]:.1f} fps')
+        tabs=st.tabs(["Video & pose","Biomechanics","Events & timing","Export"])
+        with tabs[0]:
+            left,right=st.columns([1.2,1])
+            with left:
+                st.markdown("#### Source video")
+                # Streamlit video player. Source audio muted by browser player setting where supported.
+                st.video(result["video_bytes"])
+                st.caption("Source footage is shown for review. Annotated sample frames display the pose model output.")
+            with right:
+                st.markdown("#### Pose tracking samples")
+                if result["thumbnails"]:
+                    ix=st.slider("Sample frame",0,len(result["thumbnails"])-1,0,key="thumb_ix")
+                    st.image(result["thumbnails"][ix],use_container_width=True)
+                else:st.warning("No pose landmarks were detected in the sampled frames.")
+            if result["thumbnails"]:
+                st.markdown("#### Frame gallery")
+                cols=st.columns(min(4,len(result["thumbnails"])))
+                for i,img in enumerate(result["thumbnails"]):cols[i%len(cols)].image(img,caption=f"Sample {i+1}")
+        with tabs[1]:
+            st.markdown("#### Joint and segment measurements")
+            desc={
+              "knee_angle_deg":"2D included angle at the knee (degrees).",
+              "hip_angle_deg":"2D included angle at the hip (degrees).",
+              "ankle_angle_deg":"2D included angle at the ankle (degrees).",
+              "elbow_angle_deg":"2D included angle at the elbow (degrees).",
+              "shoulder_angle_deg":"2D included angle at the shoulder (degrees).",
+              "trunk_lean_deg":"Projected trunk inclination relative to image vertical.",
+              "projected_shoulder_hip_separation_deg":"Difference between projected shoulder and hip line orientations; not true 3D hip-shoulder separation."
+            }
+            metric_cols=[x for x in df.columns if x.endswith("_deg") and df[x].notna().sum()>1]
+            if metric_cols:
+                selected=st.selectbox("Metric timeline",metric_cols,format_func=lambda x:x.replace("_deg","").replace("_"," ").title())
+                chart=px.line(df,x="time_s",y=selected,labels={"time_s":"Time (s)",selected:"Angle estimate (°)"},markers=False)
+                chart.update_layout(template="plotly_white",height=350,margin=dict(l=10,r=10,t=20,b=10))
+                st.plotly_chart(chart,use_container_width=True)
+                vals=df[selected].dropna()
+                aa,bb,cc=st.columns(3);aa.metric("Mean",f"{vals.mean():.1f}°");bb.metric("Minimum",f"{vals.min():.1f}°");cc.metric("Maximum",f"{vals.max():.1f}°")
+                st.caption(desc.get("_".join(selected.split("_")[:-1])+"_deg","Projected 2D measurement; interpret in camera context."))
+            with st.expander("All available metrics and definitions",expanded=True):
+                definitions=[
+                ("Bilateral knee / hip / ankle / elbow / shoulder angles","2D projected included angles from visible pose landmarks."),
+                ("Trunk lean","Projected angle of shoulder midpoint to hip midpoint relative to vertical."),
+                ("Shoulder–hip line separation","Difference between projected shoulder and hip line angles; not axial 3D rotation."),
+                ("Landmark visibility","Pose model confidence proxy; not a measure of measurement accuracy."),
+                ("Image-plane landmark velocity","Change in landmark pixel position per second; needs scale calibration for physical speed.")]
+                for title,definition in definitions:st.markdown(f"**{title}** — {definition}")
+            st.dataframe(df.head(500),use_container_width=True,hide_index=True)
+        with tabs[2]:
+            st.markdown("#### Mark key movement events")
+            st.write("Enter the original video frame number for each event. These markers are user-confirmed; MotionLab does not silently guess foot contacts.")
+            max_frame=max(0,result["total_frames"]-1)
+            with st.form("events_form"):
+                if sport.startswith("Cricket"):
+                    keys=[("runup_start","Run-up start"),("bfc_start","Back-foot contact start"),("bfc_end","Back-foot contact end"),("ffc_start","Front-foot contact start"),("ffc_end","Front-foot contact end"),("release","Ball release"),("followthrough","Follow-through event")]
+                elif sport.startswith("Baseball"):
+                    keys=[("runup_start","Wind-up start"),("bfc_start","Lead-foot contact start"),("bfc_end","Lead-foot contact end"),("ffc_start","Stride/plant end"),("release","Ball release"),("followthrough","Follow-through")]
+                else:
+                    keys=[("runup_start","Movement start"),("bfc_start","Loading / contact start"),("bfc_end","Loading / contact end"),("ffc_start","Execution / contact start"),("ffc_end","Execution / contact end"),("release","Peak / release event"),("followthrough","Recovery event")]
+                event_frames={}
+                cols=st.columns(3)
+                for i,(key,label) in enumerate(keys):
+                    value=cols[i%3].number_input(label,min_value=0,max_value=max_frame,value=0,step=1,key="ev_"+key)
+                    event_frames[key]=None if value==0 else int(value)
+                px_per_m=st.number_input("Calibration: pixels per metre (optional)",min_value=0.0,value=0.0,step=1.0,help="Measure a known distance in the same plane as the athlete. Enter pixels per metre. Leave 0 if unknown.")
+                apply=st.form_submit_button("Calculate event metrics",use_container_width=True)
+            if apply:
+                pxm=px_per_m if px_per_m>0 else None
+                enriched,intervals,stride=add_manual_event_metrics(df,result["fps"],event_frames,pxm)
+                result["event_frames"]=event_frames;result["event_metrics"]=intervals;result["stride_length_m"]=stride
+                result["df"]=enriched;st.session_state.last_result=result
+            if result.get("event_metrics"):
+                x1,x2,x3=st.columns(3)
+                x1.metric("BFC / lead contact",f'{result["event_metrics"].get("BFC contact time",np.nan):.3f} s' if pd.notna(result["event_metrics"].get("BFC contact time",np.nan)) else "Not marked")
+                x2.metric("FFC / execution contact",f'{result["event_metrics"].get("FFC contact time",np.nan):.3f} s' if pd.notna(result["event_metrics"].get("FFC contact time",np.nan)) else "Not marked")
+                x3.metric("Stride length",f'{result.get("stride_length_m",np.nan):.2f} m' if pd.notna(result.get("stride_length_m",np.nan)) else "Needs scale + markers")
+                st.dataframe(pd.DataFrame([{"Metric":k,"Value (s)":v} for k,v in result["event_metrics"].items()]),use_container_width=True,hide_index=True)
+                st.caption("Contact durations are frame-marker intervals divided by source FPS. Stride length is a 2D ankle displacement estimate and requires a same-plane scale reference.")
+            else:st.info("No event metrics yet. Add frame markers and select Calculate event metrics.")
+            st.markdown("**Phase sequence**")
+            st.write(PHASE_GUIDES.get(sport,"Mark the events relevant to this movement."))
+        with tabs[3]:
+            st.markdown("#### Export your review")
+            csv=df.to_csv(index=False).encode("utf-8")
+            st.download_button("Download frame-by-frame CSV",csv,file_name="motionlab_frame_analysis.csv",mime="text/csv")
+            summary={"athlete":result["athlete"],"sport":result["sport"],"movement":result["movement"],"video":result["video"],
+                     "date":result["date"],"frames":len(df),"detection_rate":rate,"summary":{}}
+            for col in [x for x in df.columns if x.endswith("_deg")]:
+                vals=df[col].dropna()
+                if len(vals):summary["summary"][col]={"mean":round(float(vals.mean()),2),"min":round(float(vals.min()),2),"max":round(float(vals.max()),2)}
+            if st.button("Save session to workspace"):
+                st.session_state.sessions.insert(0,summary)
+                save_cloud_session(summary)
+                st.success("Session saved to your workspace.")
+            st.download_button("Download session summary JSON",json.dumps(summary,indent=2,default=str).encode(),file_name="motionlab_session_summary.json",mime="application/json")
+        st.info("Measurement limits: a single 2D camera view cannot directly measure ground reaction force, joint moments, tissue loading, true 3D rotations, ball speed or injury risk. GCT and phase durations require reliable event markers; stride length and speed require calibration. Treat all outputs as coaching review aids, not medical decisions.")
 
-elif page == "Athletes":
-    page_header("ATHLETE DIRECTORY", "People behind the performance.", "A considered space for coaches to organise the athletes whose movement they review.")
-    if role == "coach":
-        with st.form("athlete_add"):
-            st.markdown("### Add an athlete")
-            a,b,c = st.columns(3)
-            athlete_name = a.text_input("Athlete name")
-            athlete_sport = b.selectbox("Primary sport",["Cricket","Baseball","Football","Basketball","Tennis","Athletics","Other"])
-            athlete_level = c.selectbox("Level",["Development","Club","Academy","University","Professional","Recreational"])
-            notes = st.text_input("Coaching notes (optional)")
-            add = st.form_submit_button("Add athlete  +", use_container_width=True)
-        if add and athlete_name.strip():
-            st.session_state.setdefault("athlete_records",[])
-            st.session_state.athlete_records.append({"Name":athlete_name,"Sport":athlete_sport,"Level":athlete_level,"Notes":notes})
-            st.success("Athlete added to this browser session.")
-    records=st.session_state.get("athlete_records",[])
-    if records:
-        st.markdown("## Athlete roster")
-        st.dataframe(pd.DataFrame(records),use_container_width=True,hide_index=True)
+elif page=="Athletes":
+    header("ATHLETE MANAGEMENT","Athlete library.","Create a working roster and keep athlete details together.")
+    with st.form("athlete_form"):
+        a,b,c=st.columns(3)
+        nm=a.text_input("Athlete name");sp=b.selectbox("Primary sport",["Cricket","Baseball","Football","Basketball","Tennis","Athletics","Other"])
+        level=c.selectbox("Level",["Development","Club","Academy","University","Professional","Recreational"])
+        note=st.text_input("Notes / goals")
+        go=st.form_submit_button("Add athlete")
+    if go and nm.strip():
+        st.session_state.athlete_records.append({"Name":nm.strip(),"Sport":sp,"Level":level,"Notes":note})
+        st.success("Athlete added to this browser session.")
+    if st.session_state.athlete_records:st.dataframe(pd.DataFrame(st.session_state.athlete_records),use_container_width=True,hide_index=True)
+    else:st.info("No athletes added yet. Add an athlete above to start a roster.")
+    st.caption("Roster persistence and coach-to-athlete invitations require the cloud database setup in the deployment guide.")
+
+elif page=="Session history":
+    header("TRAINING LOG","Session history.","Review saved sessions and export a record of your work.")
+    rows=st.session_state.sessions+([] if st.session_state.get("preview") else load_cloud_sessions())
+    if rows:
+        tab=pd.DataFrame([{"Date":x["date"],"Athlete":x["athlete"],"Sport":x["sport"],"Movement":x["movement"],"Video":x["video"],"Frames":x["frames"],"Detection":f'{x["detection_rate"]:.1f}%'} for x in rows])
+        st.dataframe(tab,use_container_width=True,hide_index=True)
+        st.download_button("Export session history CSV",tab.to_csv(index=False).encode(),file_name="motionlab_history.csv",mime="text/csv")
+    else:st.info("Completed analyses that you save will appear here.")
+
+elif page=="Reports":
+    header("REPORTING","Performance reports.","Build a portable session summary from the latest video analysis.")
+    res=st.session_state.get("last_result")
+    if not res:st.info("Run a video analysis first. The latest session will be available here.")
     else:
-        st.markdown("<div class='ml-panel'><div class='ml-section-kicker'>ROSTER</div><h2 style='margin:.6rem 0'>Build your athlete directory.</h2><p class='ml-muted'>Add athlete profiles to organise sport, development level and coaching notes. Persistent team management and shared coach-athlete access are planned for a later release.</p></div>",unsafe_allow_html=True)
-    if role=="athlete":
-        st.info("Your athlete workspace is ready. Coach invitations and shared team spaces are not enabled in this release.")
+        df=res["df"];st.markdown(f"### {res['athlete']} · {res['sport']}")
+        st.write(f"**Movement:** {res['movement']}  \n**Video:** {res['video']}  \n**Date:** {res['date']}")
+        st.metric("Pose detection rate",f'{df.pose_detected.mean()*100:.1f}%')
+        metrics=[]
+        for col in [x for x in df.columns if x.endswith("_deg")]:
+            vals=df[col].dropna()
+            if len(vals):metrics.append({"Metric":col.replace("_"," ").title(),"Mean":round(vals.mean(),1),"Min":round(vals.min(),1),"Max":round(vals.max(),1)})
+        if metrics:st.dataframe(pd.DataFrame(metrics),use_container_width=True,hide_index=True)
+        st.caption("Report values are projected 2D estimates. Interpretation should be reviewed by a qualified coach or sports scientist.")
 
-elif page == "Session history":
-    page_header("ANALYSIS ARCHIVE", "Every review, in one place.", "Return to previous movement reviews and export your session log.")
-    sessions=load_sessions()
-    if sessions:
-        table=pd.DataFrame([{"Date":x["date"],"Athlete":x["athlete"],"Sport":x["sport"],"Movement":x["movement"],"Video":x["video"],"Frames":x["frames"],"Pose detection":f'{x["detection_rate"]:.1f}%'} for x in sessions])
-        c1,c2=st.columns([1,3])
-        c1.metric("Saved sessions",len(sessions))
-        c2.download_button("Export session history  ↓",table.to_csv(index=False).encode(),file_name="motionlab_session_history.csv",mime="text/csv",use_container_width=True)
-        st.markdown("## Session log")
-        st.dataframe(table,use_container_width=True,hide_index=True)
-    else:
-        st.markdown("<div class='ml-panel'><div class='ml-section-kicker'>YOUR ARCHIVE</div><h2 style='margin:.6rem 0'>Your session history will build here.</h2><p class='ml-muted'>Once you complete an analysis, its summary will appear in this archive.</p></div>",unsafe_allow_html=True)
+elif page=="Team workspace":
+    header("COACHING","Team workspace.","A starting point for academy and team workflows.")
+    st.markdown("<div class='ml-card'><h3>Team operations</h3><p class='ml-muted'>The current build includes athlete roster entry, individual video reviews, saved session history and exportable reports. Multi-user invitations, role permissions, team-level analytics and shared media storage are not activated until Supabase policies and storage are configured.</p></div>",unsafe_allow_html=True)
+    st.markdown("### Team-ready workflows")
+    st.write("- Athlete roster and sport / level tags\n- Session review and coach notes\n- Frame-level CSV and session summary exports\n- Cloud authentication and session history when Supabase is configured")
 
-elif page == "Account":
-    page_header("ACCOUNT & PREFERENCES", "Your MotionLab account.", "Profile and workspace information.")
-    c1,c2=st.columns(2,gap="large")
-    with c1:
-        st.markdown("<div class='ml-panel'><div class='ml-section-kicker'>PROFILE</div><h2 style='margin:.7rem 0'>"+str(name)+"</h2><p class='ml-muted'>"+str(st.session_state.user.email)+"</p><span class='ml-pill'>"+role.title()+"</span></div>",unsafe_allow_html=True)
-    with c2:
-        connected = db_enabled() and not st.session_state.get("preview")
-        st.markdown("<div class='ml-panel'><div class='ml-section-kicker'>WORKSPACE STATUS</div><h2 style='margin:.7rem 0'>"+("Cloud connected" if connected else "Preview mode")+"</h2><p class='ml-muted'>"+("Supabase authentication and cloud session storage are configured." if connected else "Connect Supabase to enable persistent accounts and session history across devices.")+"</p></div>",unsafe_allow_html=True)
-    st.markdown("## About MotionLab")
-    st.markdown("<div class='ml-panel-soft'><p class='ml-muted'>MotionLab is a sports biomechanics and performance-analysis workspace. The current release provides video-based 2D pose estimation and projected joint-angle measurements. It does not directly measure ground-contact forces, 3D joint rotations, joint moments, tissue loading or injury risk.</p></div>",unsafe_allow_html=True)
+elif page=="Account":
+    header("ACCOUNT","Your workspace settings.","Account status and data handling.")
+    a,b=st.columns(2)
+    a.markdown(f"<div class='ml-card'><div class='ml-kicker'>PROFILE</div><h3>{display}</h3><p class='ml-muted'>{getattr(st.session_state.user,'email','Preview account')}</p><span class='ml-pill'>{role.title()}</span></div>",unsafe_allow_html=True)
+    b.markdown(f"<div class='ml-card'><div class='ml-kicker'>CONNECTION</div><h3>{'Cloud authentication connected' if supabase and not st.session_state.get('preview') else 'Preview mode'}</h3><p class='ml-muted'>{'Supabase credentials detected.' if supabase else 'Configure Supabase to enable real account registration and persistent session history.'}</p></div>",unsafe_allow_html=True)
+    st.markdown("### Data handling")
+    st.write("Video files are processed for the current analysis and are not automatically saved to cloud storage in this build. Session summaries may be saved to Supabase when configured. Obtain athlete consent before uploading identifiable footage.")
 
-st.markdown("<div style='margin-top:42px;border-top:1px solid #e4e8df;padding-top:16px;color:#879188;font-size:.78rem'>MOTIONLAB · Movement, understood. &nbsp; This product supports coaching review and does not replace qualified clinical or biomechanical assessment.</div>",unsafe_allow_html=True)
+st.markdown("<div style='margin-top:45px;border-top:1px solid #e4eae3;padding-top:16px;color:#778379;font-size:.76rem'>MOTIONLAB · Sports biomechanics & performance intelligence · Coaching support, not medical diagnosis.</div>",unsafe_allow_html=True)

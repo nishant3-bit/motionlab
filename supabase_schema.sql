@@ -1,11 +1,10 @@
--- Run this once in Supabase: SQL Editor -> New query -> Run.
+-- MotionLab Supabase schema (run in Supabase SQL Editor)
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text,
   display_name text,
-  role text not null default 'athlete' check (role in ('athlete','coach')),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  role text not null default 'athlete' check (role in ('athlete','coach','academy / team')),
+  created_at timestamptz not null default now()
 );
 
 create table if not exists public.analysis_sessions (
@@ -16,23 +15,40 @@ create table if not exists public.analysis_sessions (
   movement text not null,
   video_name text,
   analysis_date text,
-  frames_analysed integer default 0,
-  detection_rate numeric default 0,
-  summary jsonb default '{}'::jsonb,
+  frames_analysed integer,
+  detection_rate double precision,
+  summary jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 
 alter table public.profiles enable row level security;
 alter table public.analysis_sessions enable row level security;
 
-drop policy if exists "Users can read own profile" on public.profiles;
-create policy "Users can read own profile" on public.profiles for select using (auth.uid() = id);
+drop policy if exists "Users can view own profile" on public.profiles;
+create policy "Users can view own profile" on public.profiles for select using (auth.uid() = id);
 drop policy if exists "Users can insert own profile" on public.profiles;
 create policy "Users can insert own profile" on public.profiles for insert with check (auth.uid() = id);
 drop policy if exists "Users can update own profile" on public.profiles;
 create policy "Users can update own profile" on public.profiles for update using (auth.uid() = id) with check (auth.uid() = id);
 
-drop policy if exists "Users can read own sessions" on public.analysis_sessions;
-create policy "Users can read own sessions" on public.analysis_sessions for select using (auth.uid() = user_id);
+drop policy if exists "Users can view own sessions" on public.analysis_sessions;
+create policy "Users can view own sessions" on public.analysis_sessions for select using (auth.uid() = user_id);
 drop policy if exists "Users can insert own sessions" on public.analysis_sessions;
 create policy "Users can insert own sessions" on public.analysis_sessions for insert with check (auth.uid() = user_id);
+drop policy if exists "Users can delete own sessions" on public.analysis_sessions;
+create policy "Users can delete own sessions" on public.analysis_sessions for delete using (auth.uid() = user_id);
+
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+  insert into public.profiles (id,email,display_name,role)
+  values (new.id,new.email,coalesce(new.raw_user_meta_data->>'display_name',''),coalesce(new.raw_user_meta_data->>'role','athlete'))
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
+for each row execute procedure public.handle_new_user();
